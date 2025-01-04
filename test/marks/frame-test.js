@@ -3,9 +3,9 @@ import assert from "assert";
 
 it("frame(options) has the expected defaults", () => {
   const frame = Plot.frame();
-  assert.strictEqual(frame.data, undefined);
+  assert.deepStrictEqual(frame.data, [null]);
   assert.strictEqual(frame.transform, undefined);
-  assert.deepStrictEqual(frame.channels, []);
+  assert.deepStrictEqual(frame.channels, {});
   assert.strictEqual(frame.fill, "none");
   assert.strictEqual(frame.fillOpacity, undefined);
   assert.strictEqual(frame.stroke, "currentColor");

@@ -1,10 +1,9 @@
 import fs from "fs";
-import {terser} from "rollup-plugin-terser";
 import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
 import node from "@rollup/plugin-node-resolve";
-import * as meta from "./package.json";
-import typescript from "@rollup/plugin-typescript";
+import terser from "@rollup/plugin-terser";
+import meta from "./package.json" assert {type: "json"};
 
 const filename = meta.name.split("/").pop();
 
@@ -14,10 +13,11 @@ if (typeof d3.jsdelivr === "undefined") throw new Error("unable to resolve d3");
 const d3Path = `d3@${d3.version}/${d3.jsdelivr}`;
 
 // Extract copyrights from the LICENSE.
-const copyrights = fs.readFileSync("./LICENSE", "utf-8")
+const copyrights = fs
+  .readFileSync("./LICENSE", "utf-8")
   .split(/\n/g)
-  .filter(line => /^copyright\s+/i.test(line))
-  .map(line => line.replace(/^copyright\s+/i, ""));
+  .filter((line) => /^copyright\s+/i.test(line))
+  .map((line) => line.replace(/^copyright\s+/i, ""));
 
 const config = {
   input: "bundle.js",
@@ -26,12 +26,7 @@ const config = {
     indent: false,
     banner: `// ${meta.name} v${meta.version} Copyright ${copyrights.join(", ")}`
   },
-  plugins: [
-    typescript(),
-    commonjs(),
-    json(),
-    node()
-  ]
+  plugins: [commonjs(), json(), node()]
 };
 
 export default [
@@ -43,8 +38,8 @@ export default [
       format: "umd",
       extend: true,
       file: `dist/${filename}.umd.js`,
-      globals: {"d3": "d3"},
-      paths: {"d3": d3Path}
+      globals: {d3: "d3"},
+      paths: {d3: d3Path}
     }
   },
   {
@@ -55,8 +50,8 @@ export default [
       format: "umd",
       extend: true,
       file: `dist/${filename}.umd.min.js`,
-      globals: {"d3": "d3"},
-      paths: {"d3": d3Path}
+      globals: {d3: "d3"},
+      paths: {d3: d3Path}
     },
     plugins: [
       ...config.plugins,

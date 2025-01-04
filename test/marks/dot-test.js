@@ -5,9 +5,26 @@ it("dot() has the expected defaults", () => {
   const dot = Plot.dot();
   assert.strictEqual(dot.data, undefined);
   assert.strictEqual(dot.transform, undefined);
-  assert.deepStrictEqual(dot.channels.map(c => c.name), ["x", "y"]);
-  assert.deepStrictEqual(dot.channels.map(c => Plot.valueof([[1, 2], [3, 4]], c.value)), [[1, 3], [2, 4]]);
-  assert.deepStrictEqual(dot.channels.map(c => c.scale), ["x", "y"]);
+  assert.deepStrictEqual(Object.keys(dot.channels), ["x", "y"]);
+  assert.deepStrictEqual(
+    Object.values(dot.channels).map((c) =>
+      Plot.valueof(
+        [
+          [1, 2],
+          [3, 4]
+        ],
+        c.value
+      )
+    ),
+    [
+      [1, 3],
+      [2, 4]
+    ]
+  );
+  assert.deepStrictEqual(
+    Object.values(dot.channels).map((c) => c.scale),
+    ["x", "y"]
+  );
   assert.strictEqual(dot.r, 3);
   assert.strictEqual(dot.fill, "none");
   assert.strictEqual(dot.fillOpacity, undefined);
@@ -35,14 +52,14 @@ it("dot(data, {r}) allows r to be a constant radius", () => {
 it("dot(data, {r}) allows r to be a variable radius", () => {
   const dot = Plot.dot(undefined, {r: "x"});
   assert.strictEqual(dot.r, undefined);
-  const r = dot.channels.find(c => c.name === "r");
+  const {r} = dot.channels;
   assert.strictEqual(r.value, "x");
   assert.strictEqual(r.scale, "r");
 });
 
 it("dot(data, {title}) specifies an optional title channel", () => {
   const dot = Plot.dot(undefined, {title: "x"});
-  const title = dot.channels.find(c => c.name === "title");
+  const {title} = dot.channels;
   assert.strictEqual(title.value, "x");
   assert.strictEqual(title.scale, undefined);
 });
@@ -60,9 +77,9 @@ it("dot(data, {fill}) allows fill to be null", () => {
 it("dot(data, {fill}) allows fill to be a variable color", () => {
   const dot = Plot.dot(undefined, {fill: "x"});
   assert.strictEqual(dot.fill, undefined);
-  const fill = dot.channels.find(c => c.name === "fill");
+  const {fill} = dot.channels;
   assert.strictEqual(fill.value, "x");
-  assert.strictEqual(fill.scale, "color");
+  assert.strictEqual(fill.scale, "auto");
 });
 
 it("dot(data, {fill}) defaults stroke to undefined if fill is not none", () => {
@@ -84,13 +101,81 @@ it("dot(data, {stroke}) allows stroke to be null", () => {
 it("dot(data, {stroke}) allows stroke to be a variable color", () => {
   const dot = Plot.dot(undefined, {stroke: "x"});
   assert.strictEqual(dot.stroke, undefined);
-  const stroke = dot.channels.find(c => c.name === "stroke");
+  const {stroke} = dot.channels;
   assert.strictEqual(stroke.value, "x");
-  assert.strictEqual(stroke.scale, "color");
+  assert.strictEqual(stroke.scale, "auto");
 });
 
 it("dot(data, {stroke}) defaults strokeWidth to 1.5 if stroke is defined", () => {
   assert.strictEqual(Plot.dot(undefined, {stroke: "red"}).strokeWidth, 1.5);
   assert.strictEqual(Plot.dot(undefined, {stroke: "x"}).strokeWidth, 1.5);
   assert.strictEqual(Plot.dot(undefined, {stroke: null}).strokeWidth, undefined);
+});
+
+it("dot(data, {fill, symbol}) initializes the symbol hint for a constant fill", () => {
+  assert.deepStrictEqual(
+    Plot.dot([], {
+      fill: "currentColor",
+      symbol: Plot.indexOf
+    }).initialize().channels.symbol.hint,
+    {fill: "currentColor", stroke: "none"}
+  );
+  assert.deepStrictEqual(
+    Plot.dot([], {
+      fill: "red",
+      symbol: Plot.indexOf
+    }).initialize().channels.symbol.hint,
+    {fill: "red", stroke: "none"}
+  );
+});
+
+it("dot(data, {fill, symbol}) initializes the symbol hint for a channel fill", () => {
+  assert.deepStrictEqual(
+    Plot.dot([], {
+      fill: Plot.indexOf,
+      symbol: Plot.indexOf
+    }).initialize().channels.symbol.hint,
+    {fill: "color", stroke: "none"}
+  );
+  assert.deepStrictEqual(
+    Plot.dot([], {
+      fill: Plot.identity,
+      symbol: Plot.indexOf
+    }).initialize().channels.symbol.hint,
+    {fill: "currentColor", stroke: "none"}
+  );
+});
+
+it("dot(data, {stroke, symbol}) initializes the symbol hint for a constant stroke", () => {
+  assert.deepStrictEqual(
+    Plot.dot([], {
+      stroke: "currentColor",
+      symbol: Plot.indexOf
+    }).initialize().channels.symbol.hint,
+    {fill: "none", stroke: "currentColor"}
+  );
+  assert.deepStrictEqual(
+    Plot.dot([], {
+      stroke: "red",
+      symbol: Plot.indexOf
+    }).initialize().channels.symbol.hint,
+    {fill: "none", stroke: "red"}
+  );
+});
+
+it("dot(data, {stroke, symbol}) initializes the symbol hint for a channel stroke", () => {
+  assert.deepStrictEqual(
+    Plot.dot([], {
+      stroke: Plot.indexOf,
+      symbol: Plot.indexOf
+    }).initialize().channels.symbol.hint,
+    {fill: "none", stroke: "color"}
+  );
+  assert.deepStrictEqual(
+    Plot.dot([], {
+      stroke: Plot.identity,
+      symbol: Plot.indexOf
+    }).initialize().channels.symbol.hint,
+    {fill: "none", stroke: "currentColor"}
+  );
 });

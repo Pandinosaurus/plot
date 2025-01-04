@@ -1,6 +1,6 @@
 import {stratify, tree} from "d3";
 import {ascendingDefined} from "../defined.js";
-import {column, identity, isObject, one, valueof} from "../options.js";
+import {column, identity, isArray, isObject, one, valueof} from "../options.js";
 import {basic} from "./basic.js";
 
 export function treeNode({
@@ -11,10 +11,12 @@ export function treeNode({
   treeSort,
   treeSeparation,
   treeAnchor,
+  treeFilter,
   ...options
 } = {}) {
   treeAnchor = maybeTreeAnchor(treeAnchor);
   treeSort = maybeTreeSort(treeSort);
+  if (treeFilter != null) treeFilter = maybeNodeValue(treeFilter);
   if (frameAnchor === undefined) frameAnchor = treeAnchor.frameAnchor;
   const normalize = normalizer(delimiter);
   const outputs = treeOutputs(options, maybeNodeValue);
@@ -32,16 +34,20 @@ export function treeNode({
       const treeData = [];
       const treeFacets = [];
       const rootof = stratify().path((i) => P[i]);
+      const setData = isArray(data)
+        ? (node) => (node.data = data[node.data])
+        : (node) => (node.data = data.get(node.data));
       const layout = treeLayout();
       if (layout.nodeSize) layout.nodeSize([1, 1]);
       if (layout.separation && treeSeparation !== undefined) layout.separation(treeSeparation ?? one);
       for (const o of outputs) o[output_values] = o[output_setValues]([]);
       for (const facet of facets) {
         const treeFacet = [];
-        const root = rootof(facet.filter(i => P[i] != null)).each(node => node.data = data[node.data]);
+        const root = rootof(facet.filter((i) => P[i] != null)).each(setData);
         if (treeSort != null) root.sort(treeSort);
         layout(root);
         for (const node of root.descendants()) {
+          if (treeFilter != null && !treeFilter(node)) continue;
           treeFacet.push(++treeIndex);
           treeData[treeIndex] = node.data;
           treeAnchor.position(node, treeIndex, X, Y);
@@ -66,10 +72,12 @@ export function treeLink({
   treeSort,
   treeSeparation,
   treeAnchor,
+  treeFilter,
   ...options
 } = {}) {
   treeAnchor = maybeTreeAnchor(treeAnchor);
   treeSort = maybeTreeSort(treeSort);
+  if (treeFilter != null) treeFilter = maybeLinkValue(treeFilter);
   options = {curve, stroke, strokeWidth, strokeOpacity, ...options};
   const normalize = normalizer(delimiter);
   const outputs = treeOutputs(options, maybeLinkValue);
@@ -91,17 +99,18 @@ export function treeLink({
       let treeIndex = -1;
       const treeData = [];
       const treeFacets = [];
-      const rootof = stratify().path(i => P[i]);
+      const rootof = stratify().path((i) => P[i]);
       const layout = treeLayout();
       if (layout.nodeSize) layout.nodeSize([1, 1]);
       if (layout.separation && treeSeparation !== undefined) layout.separation(treeSeparation ?? one);
       for (const o of outputs) o[output_values] = o[output_setValues]([]);
       for (const facet of facets) {
         const treeFacet = [];
-        const root = rootof(facet.filter(i => P[i] != null)).each(node => node.data = data[node.data]);
+        const root = rootof(facet.filter((i) => P[i] != null)).each((node) => (node.data = data[node.data]));
         if (treeSort != null) root.sort(treeSort);
         layout(root);
         for (const {source, target} of root.links()) {
+          if (treeFilter != null && !treeFilter(target, source)) continue;
           treeFacet.push(++treeIndex);
           treeData[treeIndex] = target.data;
           treeAnchor.position(source, treeIndex, X1, Y1);
@@ -118,8 +127,10 @@ export function treeLink({
 
 export function maybeTreeAnchor(anchor = "left") {
   switch (`${anchor}`.trim().toLowerCase()) {
-    case "left": return treeAnchorLeft;
-    case "right": return treeAnchorRight;
+    case "left":
+      return treeAnchorLeft;
+    case "right":
+      return treeAnchorRight;
   }
   throw new Error(`invalid tree anchor: ${anchor}`);
 }
@@ -138,13 +149,15 @@ const treeAnchorRight = {
   dx: -6,
   position({x, y}, i, X, Y) {
     X[i] = -y;
-    Y[i] =  -x;
+    Y[i] = -x;
   }
 };
 
 function maybeTreeSort(sort) {
-  return sort == null || typeof sort === "function" ? sort
-    : `${sort}`.trim().toLowerCase().startsWith("node:") ? nodeSort(maybeNodeValue(sort))
+  return sort == null || typeof sort === "function"
+    ? sort
+    : `${sort}`.trim().toLowerCase().startsWith("node:")
+    ? nodeSort(maybeNodeValue(sort))
     : nodeSort(nodeData(sort));
 }
 
@@ -153,22 +166,70 @@ function nodeSort(value) {
 }
 
 function nodeData(field) {
-  return node => node.data?.[field];
+  return (node) => node.data?.[field];
 }
 
 function normalizer(delimiter = "/") {
-  return `${delimiter}` === "/"
-    ? P => P // paths are already slash-separated
-    : P => P.map(replaceAll(delimiter, "/")); // TODO string.replaceAll when supported
+  delimiter = `${delimiter}`;
+  if (delimiter === "/") return (P) => P; // paths are already slash-separated
+  if (delimiter.length !== 1) throw new Error("delimiter must be exactly one character");
+  const delimiterCode = delimiter.charCodeAt(0);
+  return (P) => P.map((p) => slashDelimiter(p, delimiterCode));
 }
 
-function replaceAll(search, replace) {
-  search = new RegExp(regexEscape(search), "g");
-  return value => value == null ? null : `${value}`.replace(search, replace);
+const CODE_BACKSLASH = 92;
+const CODE_SLASH = 47;
+
+function slashDelimiter(input, delimiterCode) {
+  if (delimiterCode === CODE_BACKSLASH) throw new Error("delimiter cannot be backslash");
+  let afterBackslash = false;
+  for (let i = 0, n = input.length; i < n; ++i) {
+    switch (input.charCodeAt(i)) {
+      case CODE_BACKSLASH:
+        if (!afterBackslash) {
+          afterBackslash = true;
+          continue;
+        }
+        break;
+      case delimiterCode:
+        if (afterBackslash) {
+          (input = input.slice(0, i - 1) + input.slice(i)), --i, --n; // remove backslash
+        } else {
+          input = input.slice(0, i) + "/" + input.slice(i + 1); // replace delimiter with slash
+        }
+        break;
+      case CODE_SLASH:
+        if (afterBackslash) {
+          (input = input.slice(0, i) + "\\\\" + input.slice(i)), (i += 2), (n += 2); // add two backslashes
+        } else {
+          (input = input.slice(0, i) + "\\" + input.slice(i)), ++i, ++n; // add backslash
+        }
+        break;
+    }
+    afterBackslash = false;
+  }
+  return input;
 }
 
-function regexEscape(string) {
-  return `${string}`.replace(/[\\^$*+?.()|[\]{}]/g, "\\$&");
+function slashUnescape(input) {
+  let afterBackslash = false;
+  for (let i = 0, n = input.length; i < n; ++i) {
+    switch (input.charCodeAt(i)) {
+      case CODE_BACKSLASH:
+        if (!afterBackslash) {
+          afterBackslash = true;
+          continue;
+        }
+      // eslint-disable-next-line no-fallthrough
+      case CODE_SLASH:
+        if (afterBackslash) {
+          (input = input.slice(0, i - 1) + input.slice(i)), --i, --n; // remove backslash
+        }
+        break;
+    }
+    afterBackslash = false;
+  }
+  return input;
 }
 
 function isNodeValue(option) {
@@ -184,11 +245,18 @@ function maybeNodeValue(value) {
   value = `${value}`.trim().toLowerCase();
   if (!value.startsWith("node:")) return;
   switch (value) {
-    case "node:name": return nodeName;
-    case "node:path": return nodePath;
-    case "node:internal": return nodeInternal;
-    case "node:depth": return nodeDepth;
-    case "node:height": return nodeHeight;
+    case "node:name":
+      return nodeName;
+    case "node:path":
+      return nodePath;
+    case "node:internal":
+      return nodeInternal;
+    case "node:external":
+      return nodeExternal;
+    case "node:depth":
+      return nodeDepth;
+    case "node:height":
+      return nodeHeight;
   }
   throw new Error(`invalid node value: ${value}`);
 }
@@ -199,15 +267,26 @@ function maybeLinkValue(value) {
   value = `${value}`.trim().toLowerCase();
   if (!value.startsWith("node:") && !value.startsWith("parent:")) return;
   switch (value) {
-    case "parent:name": return parentValue(nodeName);
-    case "parent:path": return parentValue(nodePath);
-    case "parent:depth": return parentValue(nodeDepth);
-    case "parent:height": return parentValue(nodeHeight);
-    case "node:name": return nodeName;
-    case "node:path": return nodePath;
-    case "node:internal": return nodeInternal;
-    case "node:depth": return nodeDepth;
-    case "node:height": return nodeHeight;
+    case "parent:name":
+      return parentValue(nodeName);
+    case "parent:path":
+      return parentValue(nodePath);
+    case "parent:depth":
+      return parentValue(nodeDepth);
+    case "parent:height":
+      return parentValue(nodeHeight);
+    case "node:name":
+      return nodeName;
+    case "node:path":
+      return nodePath;
+    case "node:internal":
+      return nodeInternal;
+    case "node:external":
+      return nodeExternal;
+    case "node:depth":
+      return nodeDepth;
+    case "node:height":
+      return nodeHeight;
   }
   throw new Error(`invalid link value: ${value}`);
 }
@@ -232,15 +311,19 @@ function nodeInternal(node) {
   return !!node.children;
 }
 
+function nodeExternal(node) {
+  return !node.children;
+}
+
 function parentValue(evaluate) {
-  return (child, parent) => parent == null ? undefined : evaluate(parent);
+  return (child, parent) => (parent == null ? undefined : evaluate(parent));
 }
 
 // Walk backwards to find the first slash.
 function nameof(path) {
   let i = path.length;
   while (--i > 0) if (slash(path, i)) break;
-  return path.slice(i + 1);
+  return slashUnescape(path.slice(i + 1));
 }
 
 // Slashes can be escaped; to determine whether a slash is a path delimiter, we
